@@ -166,7 +166,6 @@ void cuda_matmul_bwd(float *A, float *B, float *dC, float *dA, float *dB,
 {
   int threads = 256;
 
-  // --- Allocate temporaries ---
   float *B_T;                                              // [N x K]        non-batched
   float *A_T;                                              // [batch x K x M]
   float *dB_temp;                                          // [K x N]        accumulation scratch
@@ -174,18 +173,13 @@ void cuda_matmul_bwd(float *A, float *B, float *dC, float *dA, float *dB,
   cudaMalloc(&A_T,     (size_t)Nbatch * K * M * sizeof(float));
   cudaMalloc(&dB_temp, (size_t)K * N          * sizeof(float));
 
-  // --- 1. Transpose B (K x N) → B_T (N x K)  [non-batched] ---
   int total_B = K * N;
   transpose_2d<<<(total_B + threads - 1) / threads, threads>>>(B, B_T, K, N);
 
-  // --- 2. Transpose every batch slice of A: (Nbatch, M, K) → A_T (Nbatch, K, M) ---
   cuda_transpose_3d(A, A_T, Nbatch, M, K);  // includes cudaDeviceSynchronize()
 
   cudaDeviceSynchronize();  // ensure B_T is also ready
 
-  // --- 3. dA[batch x M x K] = dC[batch x M x N] @ B_T[N x K] ---
-  //    dC   → batched "A" operand  (grid.z = Nbatch)
-  //    B_T  → shared non-batched "B" operand
   {
     dim3 block(32);
     dim3 grid((K + 15) / 16, (M + 15) / 16, Nbatch);
@@ -193,10 +187,7 @@ void cuda_matmul_bwd(float *A, float *B, float *dC, float *dA, float *dB,
     cudaDeviceSynchronize();
   }
 
-  // --- 4. dB[K x N] = sum_b( A_T_b[K x M] @ dC_b[M x N] ) ---
-  //    Per-batch: A_T_b is the single-slice "A" (Nbatch=1 → batchno always 0),
-  //               dC_b  is the non-batched "B".
-  //    Accumulate each result into dB.
+
   cudaMemset(dB, 0, (size_t)K * N * sizeof(float));
   {
     dim3 block(32);
@@ -269,8 +260,6 @@ int main() {
     // Seed random generation
     srand(time(NULL));
 
-    // NOTE: Lowered dimensions here so the terminal doesn't get flooded. 
-    // Change these back to 64 when doing performance testing!
     int M = 2;
     int N = 2;
     int K = 2;

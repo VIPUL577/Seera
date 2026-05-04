@@ -327,13 +327,7 @@ void cuda_conv2DTranspose_bwd(float *W, float *X, float *dY, float *dX,
   int Wout = (Win - 1) * stridew - 2 * padw + KW;
   int CRS = Cout * KH * KW;
 
-  // ================================================================
-  // Step 1: dX = Conv2d(dY, W)
-  //   dY: [batch, Cout, Hout, Wout] = conv input  (C_input = Cout)
-  //   W:  [Cin, Cout, KH, KW]       = conv kernel (N_output = Cin)
-  //   dX: [batch, Cin, Hin, Win]     = conv output
-  //   H_out_conv = (Hout + 2*padh - KH)/strideh + 1 = Hin
-  // ================================================================
+
   {
     int aa1 = (Hin * Win + 15) / 16;
     int aa2 = (Cin + 15) / 16;
@@ -344,13 +338,6 @@ void cuda_conv2DTranspose_bwd(float *W, float *X, float *dY, float *dX,
                                        padh, padw, strideh, stridew, Hin, Win);
     cudaDeviceSynchronize();
   }
-
-  // ================================================================
-  // Step 2: dW via per-batch fused WMMA kernel + reduce
-  //   For each batch b:
-  //     dW_b[Cin, CRS] = X_b[Cin, spatial] @ im2col(dY_b)[CRS, spatial]^T
-  //   Then: dW = sum_b dW_b
-  // ================================================================
   {
     float *dW_batch;
     cudaMalloc(&dW_batch, batch * Cin * CRS * sizeof(float));

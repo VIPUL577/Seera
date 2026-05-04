@@ -264,7 +264,6 @@ namespace seera_cuda
         d_out[(batchN * C + c) * H_in * W_in + globalid] = temp;
     }
 
-    // --- dW kernel: per-batch fused WMMA ---
     __global__ void conv2d_dW_kernel(float *dY, float *X, float *dW_batch,
                                      int N_out, int C, int H, int W, int R, int S,
                                      int H_out, int W_out, int strideh, int stridew,
@@ -398,7 +397,6 @@ namespace seera_cuda
         int W_out = (W_in + 2 * padw - S) / stridew + 1;
         int CRS = C * R * S;
 
-        // Step 1: dX = ConvTranspose(dY, W)
         {
             int total_N_gemm = batch * H_out * W_out;
             int M_gemm = CRS; // C * R * S
@@ -428,7 +426,6 @@ namespace seera_cuda
             cudaFree(intermediate);
         }
 
-        // Step 2: dW via per-batch fused WMMA + reduce
         {
             float *dW_batch;
             cudaMalloc(&dW_batch, batch * N * CRS * sizeof(float));
@@ -441,7 +438,6 @@ namespace seera_cuda
                                                     padh, padw);
             cudaDeviceSynchronize();
 
-            // Reduce across batch: reuse _weight_reduce pattern
             int dw_total = N * CRS;
             int tpb = 256;
             _weight_reduce<<<(dw_total + tpb - 1) / tpb, tpb>>>(dW, dW_batch, batch, C,
