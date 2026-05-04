@@ -12,72 +12,34 @@
 
 Seera is a from-scratch deep learning framework written in Python, C++ and CUDA. It features a complete autograd engine, a high-level Keras-style API for building and training neural networks, and a set of hand-written CUDA kernels that leverage **NVIDIA Tensor Cores (WMMA)** for matrix multiplication, convolution, and transposed convolution. The framework supports seamless CPU and GPU execution — tensors, layers, optimizers, and the entire backward pass all operate directly on device memory without host round-trips.
 
-## Table of Contents
-
-- [Architecture Overview](#architecture-overview)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Building the C++ Engine](#building-the-c-engine)
-  - [Building the CUDA Engine](#building-the-cuda-engine)
-- [Quick Start](#quick-start)
-  - [CPU Training](#cpu-training)
-  - [GPU Training](#gpu-training)
-- [API Reference](#api-reference)
-  - [Tensor](#tensor)
-  - [Layers](#layers)
-  - [Sequential Model](#sequential-model)
-  - [Loss Functions](#loss-functions)
-  - [Optimizers](#optimizers)
-- [Autograd Engine](#autograd-engine)
-- [GPU Tensor: cuTen](#gpu-tensor-cuten)
-- [CUDA Kernels — Deep Dive](#cuda-kernels--deep-dive)
-  - [GEMM — Tensor Core Matrix Multiplication](#1-gemm--tensor-core-matrix-multiplication-gemmcu)
-  - [Convolution — Fused im2col + WMMA](#2-convolution--fused-im2col--wmma-convolutioncu)
-  - [Transposed Convolution / Upsampling](#3-transposed-convolution--upsampling-upsamplingcu)
-  - [Activation Kernels](#4-activation-kernels-activationscu)
-  - [Reduction Kernels](#5-reduction-kernels-reductionkernelscu)
-  - [Element-wise Operations](#6-element-wise-operations-elemopscu)
-  - [MaxPool2D](#7-maxpool2d-maxpoolcu)
-  - [Nearest-Neighbor Unpooling](#8-nearest-neighbor-unpooling-unpoolingcu)
-  - [Broadcasting](#9-broadcasting-broadcastcu)
-  - [Col2Im](#10-col2im-col2imcu)
-  - [Tensor Essentials](#11-tensor-essentials-cuten_essentailscu)
-  - [Pybind11 Bindings](#12-pybind11-bindings-cuda_bindingscpp)
-- [C++ CPU Engine](#c-cpu-engine)
-- [Benchmarking](#benchmarking)
-- [Model Save & Load](#model-save--load)
-
----
 
 ## Architecture Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         User API  (Seera.py)                         │
-│   Input │ Dense │ Conv2D │ ConvTranspose2D │ Flatten │ MaxPool2D ...  │
+│   Input │ Dense │ Conv2D │ ConvTranspose2D │ Flatten │ MaxPool2D ... │
 │   Sequential │ Loss │ SGD │ Adam                                     │
 ├──────────────────────────────────────────────────────────────────────┤
-│                  Tensor + Autograd  (Seera_init.py)                   │
+│                  Tensor + Autograd  (Seera_init.py)                  │
 │   Tensor class with operator overloading, computation graph,         │
 │   forward ops (conv2d, matmul, softmax, reductions ...)              │
 ├──────────────────────────────────────────────────────────────────────┤
-│              Autograd Engine  (Seera_Engine.py)                       │
+│              Autograd Engine  (Seera_Engine.py)                      │
 │   Topological sort → backward_step()  (CPU + GPU codepaths)          │
 ├─────────────────────────┬────────────────────────────────────────────┤
-│   CPU Backend           │              GPU Backend                    │
+│   CPU Backend           │              GPU Backend                   │
 │   ┌─────────────────┐   │   ┌─────────────────────────────────────┐  │
-│   │ seera_cpp (.so)  │   │   │  seera_cuda (.so)                   │  │
-│   │ C++17 + OpenBLAS │   │   │  CUDA + WMMA Tensor Cores           │  │
-│   │ + OpenMP         │   │   │  ~3,000 lines of hand-written .cu   │  │
-│   │ 6 source files   │   │   │  12 source files                    │  │
+│   │ seera_cpp (.so) │   │   │  seera_cuda (.so)                   │  │
+│   │ C++17 + OpenBLAS│   │   │  CUDA + WMMA Tensor Cores           │  │
+│   │ + OpenMP        │   │   │  ~3,000 lines of hand-written .cu   │  │
+│   │ 6 source files  │   │   │  12 source files                    │  │
 │   └─────────────────┘   │   ├─────────────────────────────────────┤  │
-│                          │   │  cuTen  (cuTen.py)                   │  │
-│   NumPy fallback         │   │  GPU tensor class wrapping raw       │  │
-│   (always available)     │   │  device pointers, automatic memory   │  │
-│                          │   │  management via __del__              │  │
-│                          │   └─────────────────────────────────────┘  │
+│                         │   │  cuTen  (cuTen.py)                  │  │
+│   NumPy fallback        │   │  GPU tensor class wrapping raw      │  │
+│   (always available)    │   │  device pointers, automatic memory  │  │
+│                         │   │  management via __del__             │  │
+│                         │   └─────────────────────────────────────┘  │
 └─────────────────────────┴────────────────────────────────────────────┘
 ```
 
